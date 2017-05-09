@@ -14,7 +14,7 @@ import h5py
 
 
 learning_rate = 10
-subsample=9
+subsample=5
 LCAiters=20
 imsz=150
 ps=16
@@ -71,7 +71,7 @@ def LCA(x, D, num_iters):
     u=tf.zeros([k, batch_sz])
 
     for iters in range(num_iters):
-        a=(u-tf.sign(u)*.0484)*(tf.cast(tf.abs(u)>.0484, tf.float32))
+        a=(u-tf.sign(u)*.048)*(tf.cast(tf.abs(u)>.048, tf.float32))
         u=u+.01*(tf.matmul(tf.transpose(D), (x-tf.matmul(D, a)))-u-a)
 
         #D=D+(1/batch_sz)*tf.matmul(x-tf.matmul(D, a), tf.transpose(a))
@@ -101,6 +101,23 @@ def mat2ten(X):
     for i in range(X.shape[1]):
         Z[:,:,i]=np.reshape(X[:,i],[zs[0],zs[1]])
     return Z
+
+
+def img_aug(imgs, labels, rotate=None, flip=False):
+    print('Augmenting Data')
+    if rotate is not None:
+        for i in range(imgs.shape[0]):
+            rotated=imrotate(imgs[i, :, :, 0], rotate)
+            imgs=np.concatenate((imgs, rotated[np.newaxis, :, :, np.newaxis]), 0)
+            labels=np.concatenate((labels, labels[i, :].reshape([1, num_classes])), 0)
+
+    if flip is True:
+        for i in range(imgs.shape[0]):
+            flipped=np.fliplr(imgs[i, :, :, 0])
+            imgs=np.concatenate((imgs, flipped[np.newaxis, :, :, np.newaxis]), 0)
+            labels=np.concatenate((labels, labels[i, :].reshape([1, num_classes])), 0)
+
+    return imgs, labels
 
 
 def plot(*args, **kwargs):
@@ -143,21 +160,22 @@ if os.path.isfile('texture_data.h5') is False:
 else:
     f=h5py.File('texture_data.h5', 'r')
     X=np.asarray(f['X'])
-    Y=f['Y']
+    Y=np.asarray(f['Y'])
     testx=np.asarray(f['testx'])
-    testy=f['testy']
+    testy=np.asarray(f['testy'])
+
 
 #Dicts=np.zeros([ps**2, k*num_classes])
 x=tf.placeholder("float", [ps**2, None])
 w=tf.Variable(tf.random_normal([ps**2, k]))
 a=LCA(x, w, LCAiters)
 
-cost=tf.sqrt(tf.reduce_sum(tf.abs(tf.matmul(w, a)-x)**2))+0.01*tf.reduce_sum(tf.abs(a))
+cost=tf.sqrt(tf.reduce_sum((tf.matmul(w, a)-x)**2))+0.01*tf.reduce_sum(tf.abs(a))
 optimizer=tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
 
 for class_num in range(num_classes):
-    class_=(Y[:, class_num]==1)
+    class_=(Y==class_num)
     patches=vaw(X[class_, :, :, :], (1, ps, ps, X.shape[3]))
     patches=patches[:, ::subsample, ::subsample, :, :, :, :, :]
     patches=patches.reshape([patches.shape[0]*
@@ -165,7 +183,7 @@ for class_num in range(num_classes):
                                 patches.shape[2]*
                                 patches.shape[3]*
                                 patches.shape[4], -1]).transpose()
-    patches=0.1*scale(patches, axis=0)
+    patches=0.1*scale(patches, 0)
 
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
@@ -183,5 +201,5 @@ for class_num in range(num_classes):
                 plt.plot(np.arange(batch_sz), A)
                 plt.show()
 
-    Dicts[:, class_num*k:class_num*k+k]=wp
+    #Dicts[:, class_num*k:class_num*k+k]=wp
 np.save('texture_dict.npy', wp)
